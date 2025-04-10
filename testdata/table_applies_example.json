@@ -1,0 +1,237 @@
+{
+  "__meta__": {
+    "version": [2, 25],
+    "compiler": "p4c",
+    "architecture": "v1model"
+  },
+  "header_types": [
+    {
+      "name": "standard_metadata_t",
+      "id": 0,
+      "fields": [
+        ["ingress_port", 9],
+        ["egress_spec", 9],
+        ["egress_port", 9],
+        ["instance_type", 32],
+        ["packet_length", 32],
+        ["enq_timestamp", 32],
+        ["enq_qdepth", 19],
+        ["deq_timedelta", 32],
+        ["deq_qdepth", 19],
+        ["ingress_global_timestamp", 48],
+        ["egress_global_timestamp", 48],
+        ["mcast_grp", 16],
+        ["egress_rid", 16],
+        ["checksum_error", 1],
+        ["parser_error", 32],
+        ["priority", 3],
+        ["_padding", 3]
+      ]
+    },
+    {
+      "name": "ethernet_t",
+      "id": 1,
+      "fields": [
+        ["dstAddr", 48],
+        ["srcAddr", 48],
+        ["etherType", 16]
+      ]
+    },
+    {
+      "name": "ipv4_t",
+      "id": 2,
+      "fields": [
+        ["version", 4],
+        ["ihl", 4],
+        ["diffserv", 8],
+        ["totalLen", 16],
+        ["identification", 16],
+        ["flags", 3],
+        ["fragOffset", 13],
+        ["ttl", 8],
+        ["protocol", 8],
+        ["hdrChecksum", 16],
+        ["srcAddr", 32],
+        ["dstAddr", 32]
+      ]
+    }
+  ],
+  "headers": [
+    {
+      "name": "standard_metadata",
+      "id": 0,
+      "header_type": "standard_metadata_t",
+      "metadata": true,
+      "pi_omit": true
+    },
+    {
+      "name": "ethernet",
+      "id": 1,
+      "header_type": "ethernet_t",
+      "metadata": false,
+      "pi_omit": true
+    },
+    {
+      "name": "ipv4",
+      "id": 2,
+      "header_type": "ipv4_t",
+      "metadata": false,
+      "pi_omit": true
+    }
+  ],
+  "actions": [
+    {
+      "name": "NoAction",
+      "id": 0,
+      "runtime_data": [],
+      "primitives": []
+    },
+    {
+      "name": "ipv4_forward",
+      "id": 1,
+      "runtime_data": [
+        {
+          "name": "dstAddr",
+          "bitwidth": 48
+        },
+        {
+          "name": "port",
+          "bitwidth": 9
+        }
+      ],
+      "primitives": [
+        {
+          "op": "modify_field",
+          "parameters": [
+            {
+              "type": "field",
+              "value": ["ethernet", "dstAddr"]
+            },
+            {
+              "type": "runtime_data",
+              "value": 0
+            }
+          ]
+        },
+        {
+          "op": "modify_field",
+          "parameters": [
+            {
+              "type": "field",
+              "value": ["standard_metadata", "egress_spec"]
+            },
+            {
+              "type": "runtime_data",
+              "value": 1
+            }
+          ]
+        },
+        {
+          "op": "add_to_field",
+          "parameters": [
+            {
+              "type": "field",
+              "value": ["ipv4", "ttl"]
+            },
+            {
+              "type": "hexstr",
+              "value": "-0x1"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "drop",
+      "id": 2,
+      "runtime_data": [],
+      "primitives": [
+        {
+          "op": "drop",
+          "parameters": []
+        }
+      ]
+    }
+  ],
+  "pipelines": [
+    {
+      "name": "ingress",
+      "id": 0,
+      "init_table": "ipv4_lpm_apply1",
+      "tables": [
+        {
+          "name": "ipv4_lpm",
+          "id": 0,
+          "match_type": "lpm",
+          "type": "simple",
+          "max_size": 1024,
+          "with_counters": false,
+          "key": [
+            {
+              "match_type": "lpm",
+              "name": "ipv4.dstAddr",
+              "target": ["ipv4", "dstAddr"],
+              "mask": null
+            }
+          ],
+          "actions": ["ipv4_forward", "drop", "NoAction"],
+          "default_action": {
+            "action_id": 0,
+            "action_const": false,
+            "action_data": [],
+            "action_entry_const": false
+          }
+        }
+      ],
+      "conditionals": [
+        {
+          "name": "check_ipv4",
+          "id": 0,
+          "expression": {
+            "type": "expression",
+            "value": {
+              "op": "valid",
+              "left": null,
+              "right": {
+                "type": "header",
+                "value": "ipv4"
+              }
+            }
+          },
+          "true_next": "ipv4_lpm_apply2",
+          "false_next": null
+        }
+      ],
+      "table_applies": [
+        {
+          "name": "ipv4_lpm_apply1",
+          "id": 1,
+          "table": "ipv4_lpm",
+          "next_tables": {
+            "ipv4_forward": "check_ipv4",
+            "drop": null,
+            "NoAction": null
+          }
+        },
+        {
+          "name": "ipv4_lpm_apply2",
+          "id": 2,
+          "table": "ipv4_lpm",
+          "next_tables": {
+            "ipv4_forward": null,
+            "drop": null,
+            "NoAction": null
+          }
+        }
+      ]
+    },
+    {
+      "name": "egress",
+      "id": 1,
+      "init_table": null,
+      "tables": [],
+      "conditionals": [],
+      "table_applies": []
+    }
+  ]
+}
